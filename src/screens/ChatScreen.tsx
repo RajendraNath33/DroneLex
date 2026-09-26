@@ -23,7 +23,7 @@ const suggestedQuestions = [
   'What are no-fly zones for drones?',
 ];
 
-// Local AI response generator (placeholder for API integration)
+// Local AI response generator (fallback)
 function generateResponse(question: string): string {
   const lower = question.toLowerCase();
   if (lower.includes('dgca') || lower.includes('categor')) {
@@ -39,6 +39,35 @@ function generateResponse(question: string): string {
     return 'India designates the following no-fly zones for drones:\n\n**Red Zones** (Permission required from central govt):\n• Military installations\n• Strategic locations\n• 5km radius of major airports\n\n**Yellow Zones** (Permission from local ATC):\n• Controlled airspace\n• 5-25km from airports (altitude restricted)\n\n**Green Zones** (No permission needed up to 400ft):\n• Most of India\'s airspace\n• Rural areas with no strategic installations\n\nThe DigitalSky platform provides real-time zone maps. Always check before every flight.';
   }
   return `That's a great question about "${question}". Here's what I can share:\n\nThis is a demo response from the DroneLex AI Assistant. In production, this would connect to an AI API (like OpenAI or a specialized aviation model) to provide detailed, context-aware answers about drone piloting, aircraft design, and DGCA regulations.\n\nYou can also upload PDF documents (DGCA circulars, training manuals, etc.) for context-aware responses.`;
+}
+
+// Function to call the n8n Webhook
+async function callWebhookAI(question: string): Promise<string> {
+  const webhookUrl = import.meta.env.VITE_N8N_WEBHOOK_URL as string;
+  if (!webhookUrl) {
+    return generateResponse(question);
+  }
+  try {
+    const res = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: question, question }),
+    });
+    if (!res.ok) throw new Error(`Webhook error: ${res.status}`);
+    const data = await res.json();
+    const reply =
+      data?.output ??
+      data?.reply ??
+      data?.response ??
+      data?.answer ??
+      data?.message ??
+      (typeof data === 'string' ? data : null);
+    if (!reply) throw new Error('Empty response from webhook');
+    return reply as string;
+  } catch (err) {
+    console.error('AI webhook failed, falling back to demo response', err);
+    return generateResponse(question);
+  }
 }
 
 export default function ChatScreen() {
@@ -150,9 +179,8 @@ export default function ChatScreen() {
 
     setAttachment(null);
 
-    // Simulate AI response
-    await new Promise((r) => setTimeout(r, 800 + Math.random() * 600));
-    const response = generateResponse(content);
+    // Call n8n Webhook AI response
+    const response = await callWebhookAI(content);
 
     const { data: aiMsg } = await supabase
       .from('chat_messages')

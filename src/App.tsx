@@ -76,7 +76,7 @@ function AppContent() {
   }
 
   // Main app
-  const showTabBar = screen !== 'chat' || true;
+  const showTabBar = screen !== 'chat';
 
   return (
     <PhoneFrame>
