@@ -176,6 +176,6 @@ export default function ContentBody({ cacheKey, prompt }: { cacheKey: string; pr
         prompt={lang === 'hi' ? prompt + HI_NOTE : prompt}
         lang={lang}
       />
-    </View>
+    </div>
   );
 }
