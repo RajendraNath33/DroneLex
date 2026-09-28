@@ -31,3 +31,5 @@ android/.gradle
 
 .env
 .env.*
+
+*.tsbuildinfo
