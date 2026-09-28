@@ -31,6 +31,7 @@ import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabase';
 import type { TrainingModule, TrainingCategory, ModuleProgress } from '@/types';
 import { categories, modules, getModulesByCategory, difficultyColors } from '@/data/training';
+import LessonView from '@/components/LessonView';
 
 const iconMap: Record<string, typeof Plane> = {
   Plane, Rocket, Fan, Bot, Scale, Wind, Layers, Flame, PlaneTakeoff,
@@ -50,6 +51,7 @@ export default function TrainingScreen() {
   const { user } = useAuth();
   const [selectedCategory, setSelectedCategory] = useState<TrainingCategory | null>(null);
   const [selectedModule, setSelectedModule] = useState<TrainingModule | null>(null);
+  const [selectedLesson, setSelectedLesson] = useState<number | null>(null);
   const [progressMap, setProgressMap] = useState<Record<string, ModuleProgress>>({});
 
   useEffect(() => {
@@ -101,6 +103,24 @@ export default function TrainingScreen() {
   };
 
   // Module detail view
+  if (selectedModule && selectedLesson !== null) {
+    const doneProgress = progressMap[selectedModule.id]?.progress ?? 0;
+    const lessonPct = Math.ceil(((selectedLesson + 1) / selectedModule.lessons) * 100);
+    return (
+      <LessonView
+        key={selectedModule.id + '-' + selectedLesson}
+        mod={selectedModule}
+        index={selectedLesson}
+        completed={lessonPct <= doneProgress}
+        onBack={() => setSelectedLesson(null)}
+        onComplete={() => {
+          updateProgress(selectedModule, Math.max(doneProgress, lessonPct));
+          setSelectedLesson(null);
+        }}
+      />
+    );
+  }
+
   if (selectedModule) {
     const Icon = iconMap[selectedModule.icon] || BookOpen;
     const cat = categoryColors[selectedModule.category];
@@ -175,7 +195,9 @@ export default function TrainingScreen() {
               return (
                 <div
                   key={i}
-                  className={`flex items-center gap-3 rounded-xl border p-3.5 transition-all ${
+                  onClick={() => setSelectedLesson(i)}
+                  role="button"
+                  className={`flex cursor-pointer items-center gap-3 rounded-xl border p-3.5 transition-all ${
                     isCompleted
                       ? 'border-emerald-500/20 bg-emerald-500/5'
                       : isCurrent

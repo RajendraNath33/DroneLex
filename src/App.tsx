@@ -10,6 +10,7 @@ import AuthScreen from '@/screens/AuthScreen';
 import HomeScreen from '@/screens/HomeScreen';
 import ChatScreen from '@/screens/ChatScreen';
 import TrainingScreen from '@/screens/TrainingScreen';
+import LawsScreen from '@/screens/LawsScreen';
 import ProfileScreen from '@/screens/ProfileScreen';
 import type { ScreenName } from '@/types';
 
@@ -93,8 +94,9 @@ function AppContent() {
         {screen === 'home' && <HomeScreen onNavigate={setScreen} />}
         {screen === 'chat' && <ChatScreen onBack={() => setScreen('home')} />}
         {screen === 'training' && <TrainingScreen />}
+        {screen === 'laws' && <LawsScreen onNavigate={setScreen} />}
         {screen === 'profile' && <ProfileScreen onNavigate={setScreen} />}
-        {showTabBar && <BottomTabBar active={screen} onNavigate={setScreen} />}
+        {showTabBar && <BottomTabBar active={screen === 'laws' ? 'training' : screen} onNavigate={setScreen} />}
       </div>
     </PhoneFrame>
   );

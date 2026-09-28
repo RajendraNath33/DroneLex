@@ -47,7 +47,7 @@ export interface ModuleProgress {
   created_at: string;
 }
 
-export type ScreenName = 'home' | 'chat' | 'training' | 'profile';
+export type ScreenName = 'home' | 'chat' | 'training' | 'laws' | 'profile';
 
 export interface TrainingModule {
   id: string;

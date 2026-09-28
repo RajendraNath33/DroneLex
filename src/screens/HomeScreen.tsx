@@ -68,7 +68,7 @@ export default function HomeScreen({ onNavigate }: HomeScreenProps) {
       gradient: 'from-cyan-500 to-teal-500',
     },
     {
-      id: 'training' as ScreenName,
+      id: 'laws' as ScreenName,
       label: 'Drone Laws',
       desc: 'DGCA rules',
       icon: Scale,
