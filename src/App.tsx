@@ -1,3 +1,4 @@
+﻿import { App as CapApp } from '@capacitor/app';
 import { useEffect, useState } from 'react';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabase';
@@ -32,6 +33,14 @@ function AppContent() {
     }
   }, [loading, user, onboarded, phase]);
 
+  useEffect(() => {
+    let h: { remove: () => void } | undefined;
+    CapApp.addListener('backButton', () => {
+      if (screen !== 'home') setScreen('home');
+      else CapApp.exitApp();
+    }).then((x) => (h = x)).catch(() => {});
+    return () => h?.remove();
+  }, [screen]);
   if (loading) {
     return (
       <PhoneFrame>
@@ -82,7 +91,7 @@ function AppContent() {
     <PhoneFrame>
       <div className="relative h-full">
         {screen === 'home' && <HomeScreen onNavigate={setScreen} />}
-        {screen === 'chat' && <ChatScreen />}
+        {screen === 'chat' && <ChatScreen onBack={() => setScreen('home')} />}
         {screen === 'training' && <TrainingScreen />}
         {screen === 'profile' && <ProfileScreen onNavigate={setScreen} />}
         {showTabBar && <BottomTabBar active={screen} onNavigate={setScreen} />}
@@ -98,3 +107,5 @@ export default function App() {
     </AuthProvider>
   );
 }
+
+

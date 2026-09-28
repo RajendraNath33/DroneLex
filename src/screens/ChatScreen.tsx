@@ -71,7 +71,7 @@ async function callWebhookAI(question: string): Promise<string> {
   }
 }
 
-export default function ChatScreen() {
+export default function ChatScreen({ onBack }: { onBack?: () => void }) {
   const { user } = useAuth();
   const [threads, setThreads] = useState<ChatThread[]>([]);
   const [currentThreadId, setCurrentThreadId] = useState<string | null>(null);
@@ -237,6 +237,11 @@ export default function ChatScreen() {
       {/* Header */}
       <div className="flex items-center justify-between border-b border-white/5 bg-slate-900/80 px-4 pt-12 pb-3 backdrop-blur">
         <div className="flex items-center gap-3">
+          {!showThreads && onBack && (
+            <button onClick={onBack} className="text-slate-400" aria-label="Home">
+              <ChevronLeft size={20} />
+            </button>
+          )}
           {showThreads && (
             <button onClick={() => setShowThreads(false)} className="text-slate-400">
               <ChevronLeft size={20} />
@@ -450,3 +455,4 @@ export default function ChatScreen() {
     </div>
   );
 }
+
