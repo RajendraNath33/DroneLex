@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">DroneLex</string>
+    <string name="title_activity_main">DroneLex</string>
+    <string name="package_name">com.dronelex.app</string>
+    <string name="custom_url_scheme">com.dronelex.app</string>
+</resources>

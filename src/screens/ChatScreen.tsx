@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+﻿import { useEffect, useRef, useState } from 'react';
 import {
   Send,
   Paperclip,
@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabase';
+import SpeakButton from '@/components/SpeakButton';
 import type { ChatThread, ChatMessage as ChatMessageType } from '@/types';
 
 const suggestedQuestions = [
@@ -373,6 +374,7 @@ export default function ChatScreen() {
                     </div>
                   )}
                   <div className="space-y-1">{formatMessage(msg.content)}</div>
+                  {msg.role !== 'user' && <SpeakButton text={msg.content} />}
                 </div>
               </div>
             ))}
