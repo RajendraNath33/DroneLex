@@ -1,15 +1,28 @@
 import { useState } from 'react';
-import { Plane, Mail, Lock, User as UserIcon, Loader2, AlertCircle } from 'lucide-react';
+import { Plane, Mail, Lock, User as UserIcon, Loader2, AlertCircle, Chrome } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
 export default function AuthScreen() {
-  const { signIn, signUp } = useAuth();
+  const { signInWithGoogle, signInWithEmail, registerWithEmail } = useAuth();
   const [mode, setMode] = useState<'signin' | 'signup'>('signup');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  const getAuthError = (err: unknown) => {
+    const code = typeof err === 'object' && err && 'code' in err ? String(err.code) : '';
+    if (code === 'auth/wrong-password' || code === 'auth/invalid-credential' || code === 'auth/user-not-found') {
+      return 'ईमेल या पासवर्ड गलत है।';
+    }
+    if (code === 'auth/email-already-in-use') return 'यह ईमेल पहले से पंजीकृत है।';
+    if (code === 'auth/weak-password') return 'पासवर्ड कम से कम 6 अक्षरों का होना चाहिए।';
+    if (code === 'auth/invalid-email') return 'कृपया मान्य ईमेल पता दर्ज करें।';
+    if (code === 'auth/popup-closed-by-user') return 'Google साइन-इन विंडो बंद कर दी गई।';
+    if (code === 'auth/network-request-failed') return 'नेटवर्क समस्या है। अपना इंटरनेट कनेक्शन जाँचकर फिर कोशिश करें।';
+    return 'साइन-इन नहीं हो सका। कृपया फिर कोशिश करें।';
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -23,20 +36,31 @@ export default function AuthScreen() {
     }
 
     if (password.length < 6) {
-      setError('Password must be at least 6 characters');
+      setError('पासवर्ड कम से कम 6 अक्षरों का होना चाहिए।');
       setLoading(false);
       return;
     }
 
-    const { error } =
-      mode === 'signin'
-        ? await signIn(email, password)
-        : await signUp(email, password, fullName);
-
-    if (error) {
-      setError(error);
+    try {
+      if (mode === 'signin') await signInWithEmail(email, password);
+      else await registerWithEmail(email, password, fullName);
+    } catch (err) {
+      setError(getAuthError(err));
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
+  };
+
+  const handleGoogleSignIn = async () => {
+    setError(null);
+    setLoading(true);
+    try {
+      await signInWithGoogle();
+    } catch (err) {
+      setError(getAuthError(err));
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -91,7 +115,17 @@ export default function AuthScreen() {
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <button
+          type="button"
+          onClick={handleGoogleSignIn}
+          disabled={loading}
+          className="mb-4 flex w-full items-center justify-center gap-2 rounded-xl border border-slate-700 bg-slate-800/50 py-3 text-sm font-semibold text-white transition-all hover:bg-slate-800 disabled:opacity-60"
+        >
+          {loading ? <Loader2 size={18} className="animate-spin" /> : <Chrome size={18} />}
+          Continue with Google
+        </button>
+
+        <form onSubmit={handleSubmit} noValidate className="space-y-4">
           {mode === 'signup' && (
             <div className="animate-fade-in">
               <label className="mb-1.5 block text-xs font-medium text-slate-400">Full Name</label>
