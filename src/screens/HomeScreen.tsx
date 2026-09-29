@@ -68,6 +68,13 @@ export default function HomeScreen({ onNavigate }: HomeScreenProps) {
       gradient: 'from-cyan-500 to-teal-500',
     },
     {
+      id: 'simulator' as ScreenName,
+      label: 'Flight Simulator',
+      desc: 'DGCA rules & 2D training',
+      icon: Plane,
+      gradient: 'from-sky-500 to-blue-600',
+    },
+    {
       id: 'laws' as ScreenName,
       label: 'Drone Laws',
       desc: 'DGCA rules',

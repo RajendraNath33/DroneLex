@@ -1,0 +1,19 @@
+﻿=== NODE / NPM ===
+v20.20.2
+10.8.2
+=== package.json ===
+=== FILE TREE ===
+icon-192.png
+icon-512.png
+icon-background.png
+icon-foreground.png
+icon-only.png
+icon.png
+icon.svg
+=== ROUTING / NAV MENTIONS ===
+=== ENV KEY NAMES ONLY ===
+=== GIT ===
+## main...origin/main
+main
+origin	https://github.com/RajendraNath33/DroneLex.git (fetch)
+origin	https://github.com/RajendraNath33/DroneLex.git (push)

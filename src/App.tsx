@@ -9,6 +9,7 @@ import OnboardingScreen from '@/screens/OnboardingScreen';
 import AuthScreen from '@/screens/AuthScreen';
 import HomeScreen from '@/screens/HomeScreen';
 import ChatScreen from '@/screens/ChatScreen';
+import SimulatorScreen from '@/screens/SimulatorScreen';
 import TrainingScreen from '@/screens/TrainingScreen';
 import LawsScreen from '@/screens/LawsScreen';
 import ProfileScreen from '@/screens/ProfileScreen';
@@ -93,6 +94,7 @@ function AppContent() {
       <div className="relative h-full">
         {screen === 'home' && <HomeScreen onNavigate={setScreen} />}
         {screen === 'chat' && <ChatScreen onBack={() => setScreen('home')} />}
+        {screen === 'simulator' && <SimulatorScreen />}
         {screen === 'training' && <TrainingScreen />}
         {screen === 'laws' && <LawsScreen onNavigate={setScreen} />}
         {screen === 'profile' && <ProfileScreen onNavigate={setScreen} />}
