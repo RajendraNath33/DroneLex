@@ -1,0 +1,18 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{uid} {
+      allow get, list: if request.auth != null && request.auth.uid == uid;
+      allow create: if request.auth != null
+        && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['email', 'name', 'plan', 'createdAt'])
+        && request.resource.data.keys().hasAll(['email', 'name', 'plan', 'createdAt'])
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.name is string
+        && request.resource.data.plan == 'free'
+        && request.resource.data.createdAt is timestamp;
+      allow update, delete: if false;
+    }
+  }
+}

@@ -51,7 +51,7 @@ const categoryColors: Record<string, string> = {
 };
 
 export default function ProfileScreen({ onNavigate }: ProfileScreenProps) {
-  const { user, profile, signOut, refreshProfile } = useAuth();
+  const { user, profile, plan, logout, refreshProfile } = useAuth();
   const [progressItems, setProgressItems] = useState<ModuleProgress[]>([]);
   const [bookmarks, setBookmarks] = useState<BookmarkType[]>([]);
   const [editing, setEditing] = useState(false);
@@ -148,6 +148,9 @@ export default function ProfileScreen({ onNavigate }: ProfileScreenProps) {
               <Briefcase size={12} className="text-sky-400" />
               <span className="rounded-full bg-sky-500/10 px-2.5 py-0.5 text-[10px] font-medium capitalize text-sky-300">
                 {profile?.role || 'Student'}
+              </span>
+              <span className="rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-[10px] font-medium capitalize text-emerald-300">
+                {plan} plan
               </span>
             </div>
           </div>
@@ -364,7 +367,7 @@ export default function ProfileScreen({ onNavigate }: ProfileScreenProps) {
       {/* Sign out */}
       <div className="px-5 pt-5">
         <button
-          onClick={signOut}
+          onClick={logout}
           className="flex w-full items-center justify-center gap-2 rounded-2xl border border-rose-500/20 bg-rose-500/5 py-3.5 text-sm font-semibold text-rose-400 transition-all hover:bg-rose-500/10"
         >
           <LogOut size={18} />

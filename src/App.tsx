@@ -1,7 +1,6 @@
 ﻿import { App as CapApp } from '@capacitor/app';
 import { useEffect, useState } from 'react';
-import { AuthProvider, useAuth } from '@/context/AuthContext';
-import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/context/AuthContext';
 import PhoneFrame from '@/components/PhoneFrame';
 import BottomTabBar from '@/components/BottomTabBar';
 import SplashScreen from '@/screens/SplashScreen';
@@ -53,6 +52,14 @@ function AppContent() {
     );
   }
 
+  if (!user) {
+    return (
+      <PhoneFrame>
+        <AuthScreen />
+      </PhoneFrame>
+    );
+  }
+
   // Splash
   if (phase === 'splash') {
     return (
@@ -77,15 +84,6 @@ function AppContent() {
     );
   }
 
-  // Auth
-  if (!user) {
-    return (
-      <PhoneFrame>
-        <AuthScreen />
-      </PhoneFrame>
-    );
-  }
-
   // Main app
   const showTabBar = screen !== 'chat';
 
@@ -105,11 +103,7 @@ function AppContent() {
 }
 
 export default function App() {
-  return (
-    <AuthProvider>
-      <AppContent />
-    </AuthProvider>
-  );
+  return <AppContent />;
 }
 
 

@@ -1,90 +1,185 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
-import type { Session, User } from '@supabase/supabase-js';
-import { supabase } from '@/lib/supabase';
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { Capacitor } from '@capacitor/core';
+import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
+import {
+  createUserWithEmailAndPassword,
+  GoogleAuthProvider,
+  onAuthStateChanged,
+  signInWithCredential,
+  signInWithEmailAndPassword,
+  signInWithPopup,
+  signOut as firebaseSignOut,
+  updateProfile,
+  type User as FirebaseUser,
+} from 'firebase/auth';
+import { doc, getDoc, serverTimestamp, setDoc, Timestamp } from 'firebase/firestore';
+import { auth, db } from '@/lib/firebase';
 import type { Profile } from '@/types';
 
+export type Plan = 'free' | 'member';
+type AppUser = FirebaseUser & { id: string };
+
 interface AuthContextValue {
-  session: Session | null;
-  user: User | null;
+  user: AppUser | null;
   profile: Profile | null;
   loading: boolean;
-  signUp: (email: string, password: string, fullName: string) => Promise<{ error: string | null }>;
-  signIn: (email: string, password: string) => Promise<{ error: string | null }>;
-  signOut: () => Promise<void>;
+  plan: Plan;
+  signInWithGoogle: () => Promise<void>;
+  registerWithEmail: (email: string, password: string, name?: string) => Promise<void>;
+  signInWithEmail: (email: string, password: string) => Promise<void>;
+  logout: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
+const googleProvider = new GoogleAuthProvider();
+const profileRequests = new Map<string, Promise<{ plan: Plan; profile: Profile }>>();
+
+function withLegacyId(user: FirebaseUser): AppUser {
+  return new Proxy(user, {
+    get(target, property, receiver) {
+      return property === 'id' ? target.uid : Reflect.get(target, property, receiver);
+    },
+  }) as AppUser;
+}
+
+function toProfile(
+  user: FirebaseUser,
+  data: { name?: string; plan?: Plan; createdAt?: Timestamp }
+): Profile {
+  const createdAt = data.createdAt?.toDate().toISOString() ?? new Date().toISOString();
+  return {
+    id: user.uid,
+    full_name: data.name || user.displayName || '',
+    avatar_url: user.photoURL || '',
+    role: data.plan || 'free',
+    bio: '',
+    created_at: createdAt,
+    updated_at: createdAt,
+  };
+}
+
+async function loadUserProfile(user: FirebaseUser, name?: string) {
+  const pending = profileRequests.get(user.uid);
+  if (pending) return pending;
+
+  const request = (async () => {
+    const userRef = doc(db, 'users', user.uid);
+    const snapshot = await getDoc(userRef);
+    let data: { name?: string; plan?: Plan; createdAt?: Timestamp };
+
+    if (snapshot.exists()) {
+      data = snapshot.data() as typeof data;
+    } else {
+      data = { name: name?.trim() || user.displayName || '', plan: 'free' };
+      await setDoc(userRef, {
+        email: user.email || '',
+        name: data.name,
+        plan: 'free',
+        createdAt: serverTimestamp(),
+      });
+    }
+
+    return {
+      plan: data.plan === 'member' ? 'member' as const : 'free' as const,
+      profile: toProfile(user, data),
+    };
+  })();
+  profileRequests.set(user.uid, request);
+  try {
+    return await request;
+  } finally {
+    profileRequests.delete(user.uid);
+  }
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [session, setSession] = useState<Session | null>(null);
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<AppUser | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
-
-  const fetchProfile = async (userId: string) => {
-    const { data } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .maybeSingle();
-    setProfile(data as Profile | null);
-  };
+  const [plan, setPlan] = useState<Plan>('free');
+  const pendingRegistrationName = useRef<string | null>(null);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        fetchProfile(session.user.id);
-      }
-      setLoading(false);
-    });
-
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        (async () => {
-          await fetchProfile(session.user.id);
-        })();
-      } else {
+    let active = true;
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (!active) return;
+      setLoading(true);
+      if (!firebaseUser) {
+        setUser(null);
         setProfile(null);
+        setPlan('free');
+        setLoading(false);
+        return;
       }
-      setLoading(false);
+
+      setUser(withLegacyId(firebaseUser));
+      try {
+        const result = await loadUserProfile(firebaseUser, pendingRegistrationName.current || undefined);
+        if (!active) return;
+        setProfile(result.profile);
+        setPlan(result.plan);
+      } catch (error) {
+        console.error('Could not load Firebase user profile:', error);
+        if (active) {
+          setProfile(toProfile(firebaseUser, { name: firebaseUser.displayName || '', plan: 'free' }));
+          setPlan('free');
+        }
+      } finally {
+        if (active) setLoading(false);
+      }
     });
 
     return () => {
-      listener.subscription.unsubscribe();
+      active = false;
+      unsubscribe();
     };
   }, []);
 
-  const signUp = async (email: string, password: string, fullName: string) => {
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: { data: { full_name: fullName } },
-    });
-    return { error: error?.message ?? null };
+  const signInWithGoogle = async () => {
+    if (Capacitor.isNativePlatform()) {
+      const result = await FirebaseAuthentication.signInWithGoogle();
+      const idToken = result.credential?.idToken;
+      if (!idToken) throw new Error('Native Google sign-in did not return an ID token');
+      await signInWithCredential(auth, GoogleAuthProvider.credential(idToken));
+      return;
+    }
+
+    await signInWithPopup(auth, googleProvider);
   };
 
-  const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    return { error: error?.message ?? null };
+  const registerWithEmail = async (email: string, password: string, name?: string) => {
+    pendingRegistrationName.current = name?.trim() || null;
+    try {
+      const credential = await createUserWithEmailAndPassword(auth, email, password);
+      if (name?.trim()) await updateProfile(credential.user, { displayName: name.trim() });
+      const result = await loadUserProfile(credential.user, name);
+      setProfile(result.profile);
+      setPlan(result.plan);
+    } finally {
+      pendingRegistrationName.current = null;
+    }
   };
 
-  const signOut = async () => {
-    await supabase.auth.signOut();
-    setProfile(null);
+  const signInWithEmail = async (email: string, password: string) => {
+    const credential = await signInWithEmailAndPassword(auth, email, password);
+    const result = await loadUserProfile(credential.user);
+    setProfile(result.profile);
+    setPlan(result.plan);
   };
+
+  const logout = () => firebaseSignOut(auth);
 
   const refreshProfile = async () => {
-    if (user) await fetchProfile(user.id);
+    if (!auth.currentUser) return;
+    const result = await loadUserProfile(auth.currentUser);
+    setProfile(result.profile);
+    setPlan(result.plan);
   };
 
   return (
     <AuthContext.Provider
-      value={{ session, user, profile, loading, signUp, signIn, signOut, refreshProfile }}
+      value={{ user, profile, loading, plan, signInWithGoogle, registerWithEmail, signInWithEmail, logout, refreshProfile }}
     >
       {children}
     </AuthContext.Provider>
