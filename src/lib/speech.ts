@@ -3,13 +3,15 @@ import { TextToSpeech } from '@capacitor-community/text-to-speech';
 
 const native = Capacitor.isNativePlatform();
 
-// Android app (WebView) me speechSynthesis aksar nahi hota, isliye native TTS plugin use hota hai
+// यह जाँचता है कि ऐप या ब्राउज़र में टेक्स्ट-टू-स्पीच समर्थित है या नहीं
 export const canSpeak =
   native || (typeof window !== 'undefined' && 'speechSynthesis' in window);
 
 let token = 0;
 
+// टेक्स्ट से मार्कडाउन और अनावश्यक सिंबल हटाने के लिए
 function stripMarkdown(t: string): string {
+  if (!t) return '';
   return t
     .replace(/^#{1,6}\s+/gm, '')
     .replace(/^[-*•]\s+/gm, '')
@@ -18,10 +20,13 @@ function stripMarkdown(t: string): string {
     .replace(/\[[^\]]{2,60}\]/g, '');
 }
 
+// बड़े टेक्स्ट को छोटे-छोटे हिस्सों (chunks) में बांटना ताकि बोलने में आसानी हो
 function splitChunks(text: string): string[] {
-  const parts = text.split(/(?<=[.!?।])\s+|\n+/).map((p) => p.trim()).filter(Boolean);
+  const cleanText = stripMarkdown(text);
+  const parts = cleanText.split(/(?<=[.!?।])\s+|\n+/).map((p) => p.trim()).filter(Boolean);
   const chunks: string[] = [];
   let cur = '';
+  
   for (const p of parts) {
     if ((cur + ' ' + p).length > 160 && cur) {
       chunks.push(cur);
@@ -34,7 +39,9 @@ function splitChunks(text: string): string[] {
   return chunks;
 }
 
+// वेब ब्राउज़र के लिए सही आवाज़ (Voice) चुनना
 function pickVoice(lang: 'en' | 'hi'): SpeechSynthesisVoice | undefined {
+  if (typeof window === 'undefined' || !('speechSynthesis' in window)) return undefined;
   const want = lang === 'hi' ? 'hi-in' : 'en-in';
   const voices = window.speechSynthesis.getVoices();
   return (
@@ -43,50 +50,87 @@ function pickVoice(lang: 'en' | 'hi'): SpeechSynthesisVoice | undefined {
   );
 }
 
+// टेक्स्ट को बोलकर सुनाने का मुख्य फ़ंक्शन
 export function speak(text: string, lang: 'en' | 'hi', onDone: () => void): boolean {
   if (!canSpeak) return false;
-  const chunks = splitChunks(stripMarkdown(text));
-  if (!chunks.length) return false;
+  
+  const chunks = splitChunks(text);
+  if (!chunks.length) {
+    onDone();
+    return false;
+  }
+
   const my = ++token;
   const locale = lang === 'hi' ? 'hi-IN' : 'en-IN';
 
+  // यदि ऐप मोबाइल (Capacitor Native) पर चल रही है
   if (native) {
     (async () => {
       try {
         await TextToSpeech.stop();
         for (const c of chunks) {
-          if (token !== my) return;
-          await TextToSpeech.speak({ text: c, lang: locale, rate: 1, pitch: 1, volume: 1, category: 'ambient' });
+          if (token !== my) return; // अगर नया स्पीच रिक्वेस्ट आ गया है तो इसे रोक दें
+          await TextToSpeech.speak({
+            text: c,
+            lang: locale,
+            rate: 1.0,
+            pitch: 1.0,
+            volume: 1.0,
+            category: 'ambient',
+          });
         }
-      } catch {
-        /* ignore */
+      } catch (error) {
+        console.error('Native TTS execution error:', error);
+      } finally {
+        if (token === my) onDone();
       }
-      if (token === my) onDone();
     })();
     return true;
   }
 
-  window.speechSynthesis.cancel();
-  const voice = pickVoice(lang);
-  chunks.forEach((c, i) => {
-    const u = new SpeechSynthesisUtterance(c);
-    u.lang = locale;
-    if (voice) u.voice = voice;
-    u.onend = () => {
-      if (token === my && i === chunks.length - 1) onDone();
-    };
-    u.onerror = () => {
-      if (token === my) {
-        token++;
-        window.speechSynthesis.cancel();
-        onDone();
+  // यदि ऐप वेब ब्राउज़र पर चल रही है
+  if ('speechSynthesis' in window) {
+    window.speechSynthesis.cancel();
+    
+    let currentIndex = 0;
+    const voice = pickVoice(lang);
+
+    const speakNext = () => {
+      if (token !== my || currentIndex >= chunks.length) {
+        if (token === my) onDone();
+        return;
       }
+
+      const utterance = new SpeechSynthesisUtterance(chunks[currentIndex]);
+      utterance.lang = locale;
+      if (voice) utterance.voice = voice;
+      utterance.rate = 1.0;
+      utterance.pitch = 1.0;
+
+      utterance.onend = () => {
+        currentIndex++;
+        speakNext();
+      };
+
+      utterance.onerror = (e) => {
+        console.error('Web Speech synthesis error:', e);
+        if (token === my) {
+          currentIndex++;
+          speakNext();
+        }
+      };
+
+      window.speechSynthesis.speak(utterance);
     };
-    window.speechSynthesis.speak(u);
-  });
-  return true;
+
+    speakNext();
+    return true;
+  }
+
+  return false;
 }
 
+// बोलने की प्रक्रिया को रोकने के लिए
 export function stopSpeaking() {
   token++;
   if (native) {
