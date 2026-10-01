@@ -30,7 +30,6 @@ import type { ModuleProgress, Bookmark as BookmarkType, ScreenName } from '@/typ
 import { modules } from '@/data/training';
 import { useSettings, requestNotificationPermission } from '@/lib/settings';
 
-// Apna support email yahan likho
 const SUPPORT_EMAIL = 'support@example.com';
 
 const FAQ = [
@@ -78,25 +77,40 @@ export default function ProfileScreen({ onNavigate }: ProfileScreenProps) {
     window.setTimeout(() => setNotice(''), 2500);
   };
 
-  const toggleNotifications = async () => {
-    if (settings.notifications) {
-      update({ notifications: false });
-      flash('Notifications off');
-      return;
+  // Upgraded toggle handlers for mobile & web responsiveness
+  const toggleNotifications = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    try {
+      if (settings.notifications) {
+        update({ notifications: false });
+        flash('Notifications off');
+        return;
+      }
+      const r = await requestNotificationPermission();
+      const newState = r !== 'denied';
+      update({ notifications: newState });
+      flash(r === 'denied' ? 'Permission blocked, check device settings' : 'Notifications on');
+    } catch (err) {
+      console.error('Notification toggle error:', err);
+      update({ notifications: !settings.notifications });
     }
-    const r = await requestNotificationPermission();
-    update({ notifications: r !== 'denied' });
-    flash(r === 'denied' ? 'Permission block hai, browser/phone settings se allow karo' : 'Notifications on');
   };
 
-  const toggleTheme = () => {
-    update({ theme: settings.theme === 'dark' ? 'light' : 'dark' });
+  const toggleTheme = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const nextTheme = settings.theme === 'dark' ? 'light' : 'dark';
+    update({ theme: nextTheme });
+    flash(nextTheme === 'dark' ? 'Dark Mode Active' : 'Light Mode Active');
   };
 
-  const toggleLanguage = () => {
+  const toggleLanguage = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
     const next = settings.lang === 'en' ? 'hi' : 'en';
     update({ lang: next });
-    flash(next === 'hi' ? 'Lessons ab हिन्दी me aur awaaz Hindi me' : 'Lessons now in English');
+    flash(next === 'hi' ? 'Language switched to हिन्दी' : 'Language switched to English');
   };
 
   useEffect(() => {
@@ -113,8 +127,8 @@ export default function ProfileScreen({ onNavigate }: ProfileScreenProps) {
 
   useEffect(() => {
     if (profile) {
-      setFullName(profile.full_name);
-      setBio(profile.bio);
+      setFullName(profile.full_name || '');
+      setBio(profile.bio || '');
     }
   }, [profile]);
 
@@ -126,29 +140,30 @@ export default function ProfileScreen({ onNavigate }: ProfileScreenProps) {
       .eq('id', user.id);
     await refreshProfile();
     setEditing(false);
+    flash('Profile updated successfully');
   };
 
   const deleteBookmark = async (id: string) => {
     await supabase.from('bookmarks').delete().eq('id', id);
     setBookmarks((prev) => prev.filter((b) => b.id !== id));
+    flash('Bookmark removed');
   };
 
   const completedCount = progressItems.filter((p) => p.progress === 100).length;
   const inProgressCount = progressItems.filter((p) => p.progress > 0 && p.progress < 100).length;
-  const overallProgress = Math.round(
+  const overallProgress = modules.length > 0 ? Math.round(
     progressItems.reduce((sum, p) => sum + p.progress, 0) / modules.length
-  );
+  ) : 0;
 
   const settingsItems = [
     { icon: Bell, label: 'Notifications', value: settings.notifications ? 'On' : 'Off', onClick: toggleNotifications, toggle: settings.notifications },
     { icon: Moon, label: 'Dark Mode', value: settings.theme === 'dark' ? 'Active' : 'Off', onClick: toggleTheme, toggle: settings.theme === 'dark' },
     { icon: Globe, label: 'Language', value: settings.lang === 'hi' ? 'हिन्दी' : 'English', onClick: toggleLanguage, toggle: undefined as boolean | undefined },
-    { icon: HelpCircle, label: 'Help & Support', value: '', onClick: () => setHelpOpen(true), toggle: undefined as boolean | undefined },
+    { icon: HelpCircle, label: 'Help & Support', value: '', onClick: (e: React.MouseEvent) => { e.preventDefault(); setHelpOpen(true); }, toggle: undefined as boolean | undefined },
   ];
 
-  const firstName = profile?.full_name?.split(' ')[0] || 'U';
   const initials = profile?.full_name
-    ? profile.full_name.split(' ').map((n) => n.charAt(0)).slice(0, 2).join('').toUpperCase()
+    ? profile.full_name.split(' ').map((n: string) => n.charAt(0)).slice(0, 2).join('').toUpperCase()
     : 'U';
 
   return (
@@ -306,8 +321,7 @@ export default function ProfileScreen({ onNavigate }: ProfileScreenProps) {
               return (
                 <div
                   key={item.id}
-                  className="rounded-2xl border border-white/5 bg-slate-900/60 p-4 animate-fade-in-up"
-                  style={{ animationDelay: `${i * 0.06}s` }}
+                  className="rounded-2xl border border-white/5 bg-slate-900/60 p-4"
                 >
                   <div className="flex items-center gap-3">
                     <div className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl ${catColor}`}>
@@ -344,13 +358,12 @@ export default function ProfileScreen({ onNavigate }: ProfileScreenProps) {
                 <p className="mt-1 text-xs text-slate-600">Bookmark legal sections and training content to find them here</p>
               </div>
             )}
-            {bookmarks.map((bm, i) => {
+            {bookmarks.map((bm) => {
               const catColor = categoryColors[bm.category] || 'bg-slate-700 text-slate-300';
               return (
                 <div
                   key={bm.id}
-                  className="group rounded-2xl border border-white/5 bg-slate-900/60 p-4 animate-fade-in-up"
-                  style={{ animationDelay: `${i * 0.06}s` }}
+                  className="group rounded-2xl border border-white/5 bg-slate-900/60 p-4"
                 >
                   <div className="flex items-start gap-3">
                     <div className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg ${catColor}`}>
