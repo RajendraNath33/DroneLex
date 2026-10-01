@@ -168,3 +168,15 @@ body {
 .delay-4 { animation-delay: 0.4s; opacity: 0; }
 .delay-5 { animation-delay: 0.5s; opacity: 0; }
 .delay-6 { animation-delay: 0.6s; opacity: 0; }
+
+/* Light mode: dark UI ko invert karke light banata hai; images/3D canvas wapas normal */
+html.light {
+  filter: invert(1) hue-rotate(180deg);
+  background: #fff;
+}
+html.light img,
+html.light video,
+html.light canvas,
+html.light svg image {
+  filter: invert(1) hue-rotate(180deg);
+}
