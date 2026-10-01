@@ -1,99 +1,464 @@
-import React, { useState } from 'react';
-import { Bell, Moon, Globe, HelpCircle, LogOut, ChevronRight } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import {
+  User as UserIcon,
+  Bookmark,
+  TrendingUp,
+  LogOut,
+  Settings,
+  Bell,
+  Moon,
+  Globe,
+  HelpCircle,
+  ChevronRight,
+  Award,
+  Target,
+  Trash2,
+  Mail,
+  Briefcase,
+  Plane,
+  Scale,
+  BookOpen,
+  Cpu,
+  Rocket,
+  Fan,
+  Bot,
+  X,
+} from 'lucide-react';
+import { useAuth } from '@/context/AuthContext';
+import { supabase } from '@/lib/supabase';
+import type { ModuleProgress, Bookmark as BookmarkType, ScreenName } from '@/types';
+import { modules } from '@/data/training';
+import { useSettings, requestNotificationPermission } from '@/lib/settings';
 
-export const ProfileScreen: React.FC<{ onSignOut: () => void }> = ({ onSignOut }) => {
-  const [notifications, setNotifications] = useState(true);
-  const [darkMode, setDarkMode] = useState(true);
-  const [language, setLanguage] = useState('English');
+// Apna support email yahan likho
+const SUPPORT_EMAIL = 'support@example.com';
 
-  const handleNotificationsToggle = () => {
-    setNotifications(!notifications);
-    alert(`Notifications are now ${!notifications ? 'On' : 'Off'}`);
+const FAQ = [
+  { q: 'Lesson sunna kaise hai?', a: 'Kisi bhi lesson ya Drone Laws topic me "Listen / सुनें" button dabao. Rokne ke liye Stop dabao.' },
+  { q: 'Hindi me lesson kaise padhein?', a: 'Settings me Language ko Hindi karo, ya lesson ke upar English / हिन्दी toggle use karo.' },
+  { q: 'Content load nahi ho raha?', a: 'Internet check karo aur lesson ke neeche Refresh dabao.' },
+]; 
+
+interface ProfileScreenProps {
+  onNavigate: (screen: ScreenName) => void;
+}
+
+const categoryIcons: Record<string, typeof Plane> = {
+  'aircraft-design': Plane,
+  'advanced-drone': Rocket,
+  'helicopter-design': Fan,
+  'robotics': Bot,
+  'drone-law': Scale,
+};
+
+const categoryColors: Record<string, string> = {
+  'aircraft-design': 'bg-sky-500/10 text-sky-400',
+  'advanced-drone': 'bg-orange-500/10 text-orange-400',
+  'helicopter-design': 'bg-cyan-500/10 text-cyan-400',
+  'robotics': 'bg-emerald-500/10 text-emerald-400',
+  'drone-law': 'bg-amber-500/10 text-amber-400',
+  'law': 'bg-amber-500/10 text-amber-400',
+  'training': 'bg-sky-500/10 text-sky-400',
+};
+
+export default function ProfileScreen({ onNavigate }: ProfileScreenProps) {
+  const { user, profile, signOut, refreshProfile } = useAuth();
+  const [progressItems, setProgressItems] = useState<ModuleProgress[]>([]);
+  const [bookmarks, setBookmarks] = useState<BookmarkType[]>([]);
+  const [editing, setEditing] = useState(false);
+  const [fullName, setFullName] = useState('');
+  const [bio, setBio] = useState('');
+  const [activeTab, setActiveTab] = useState<'progress' | 'bookmarks'>('progress');
+  const { settings, update } = useSettings();
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [notice, setNotice] = useState('');
+
+  const flash = (msg: string) => {
+    setNotice(msg);
+    window.setTimeout(() => setNotice(''), 2500);
   };
 
-  const handleDarkModeToggle = () => {
-    setDarkMode(!darkMode);
-    alert(`Dark Mode is now ${!darkMode ? 'Active' : 'Inactive'}`);
+  const toggleNotifications = async () => {
+    if (settings.notifications) {
+      update({ notifications: false });
+      flash('Notifications off');
+      return;
+    }
+    const r = await requestNotificationPermission();
+    update({ notifications: r !== 'denied' });
+    flash(r === 'denied' ? 'Permission block hai, browser/phone settings se allow karo' : 'Notifications on');
   };
 
-  const handleLanguageChange = () => {
-    const newLang = language === 'English' ? 'Hindi' : 'English';
-    setLanguage(newLang);
-    alert(`Language changed to ${newLang}`);
+  const toggleTheme = () => {
+    update({ theme: settings.theme === 'dark' ? 'light' : 'dark' });
   };
 
-  const handleHelpSupport = () => {
-    alert("Help & Support: For DGCA regulations and app assistance, contact support@dronelex.ai");
+  const toggleLanguage = () => {
+    const next = settings.lang === 'en' ? 'hi' : 'en';
+    update({ lang: next });
+    flash(next === 'hi' ? 'Lessons ab हिन्दी me aur awaaz Hindi me' : 'Lessons now in English');
   };
+
+  useEffect(() => {
+    if (!user) return;
+    (async () => {
+      const [{ data: prog }, { data: bks }] = await Promise.all([
+        supabase.from('module_progress').select('*').eq('user_id', user.id).order('last_accessed', { ascending: false }),
+        supabase.from('bookmarks').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
+      ]);
+      setProgressItems(prog as ModuleProgress[] || []);
+      setBookmarks(bks as BookmarkType[] || []);
+    })();
+  }, [user]);
+
+  useEffect(() => {
+    if (profile) {
+      setFullName(profile.full_name);
+      setBio(profile.bio);
+    }
+  }, [profile]);
+
+  const saveProfile = async () => {
+    if (!user) return;
+    await supabase
+      .from('profiles')
+      .update({ full_name: fullName, bio, updated_at: new Date().toISOString() })
+      .eq('id', user.id);
+    await refreshProfile();
+    setEditing(false);
+  };
+
+  const deleteBookmark = async (id: string) => {
+    await supabase.from('bookmarks').delete().eq('id', id);
+    setBookmarks((prev) => prev.filter((b) => b.id !== id));
+  };
+
+  const completedCount = progressItems.filter((p) => p.progress === 100).length;
+  const inProgressCount = progressItems.filter((p) => p.progress > 0 && p.progress < 100).length;
+  const overallProgress = Math.round(
+    progressItems.reduce((sum, p) => sum + p.progress, 0) / modules.length
+  );
+
+  const settingsItems = [
+    { icon: Bell, label: 'Notifications', value: settings.notifications ? 'On' : 'Off', onClick: toggleNotifications, toggle: settings.notifications },
+    { icon: Moon, label: 'Dark Mode', value: settings.theme === 'dark' ? 'Active' : 'Off', onClick: toggleTheme, toggle: settings.theme === 'dark' },
+    { icon: Globe, label: 'Language', value: settings.lang === 'hi' ? 'हिन्दी' : 'English', onClick: toggleLanguage, toggle: undefined as boolean | undefined },
+    { icon: HelpCircle, label: 'Help & Support', value: '', onClick: () => setHelpOpen(true), toggle: undefined as boolean | undefined },
+  ];
+
+  const firstName = profile?.full_name?.split(' ')[0] || 'U';
+  const initials = profile?.full_name
+    ? profile.full_name.split(' ').map((n) => n.charAt(0)).slice(0, 2).join('').toUpperCase()
+    : 'U';
 
   return (
-    <div className="p-4 max-w-md mx-auto space-y-6 pb-24 text-white">
-      <h2 className="text-2xl font-bold">Settings</h2>
-      
-      <div className="space-y-3">
-        <button 
-          onClick={handleNotificationsToggle}
-          className="w-full flex items-center justify-between p-4 bg-slate-800/60 rounded-xl hover:bg-slate-800 transition"
-        >
-          <div className="flex items-center space-x-3">
-            <Bell className="w-5 h-5 text-blue-400" />
-            <span>Notifications</span>
-          </div>
-          <div className="flex items-center space-x-2 text-slate-400">
-            <span>{notifications ? 'On' : 'Off'}</span>
-            <ChevronRight className="w-4 h-4" />
-          </div>
-        </button>
+    <div className="h-full overflow-y-auto no-scrollbar pb-28">
+      {/* Header */}
+      <div className="relative overflow-hidden bg-gradient-to-br from-slate-900 via-slate-900 to-sky-950/50 px-5 pt-12 pb-6">
+        <div className="pointer-events-none absolute -right-16 -top-10 h-48 w-48 rounded-full bg-sky-500/10 blur-3xl" />
+        <div className="relative flex items-center justify-between mb-5">
+          <h1 className="font-display text-xl font-bold text-white">Profile</h1>
+          <button
+            onClick={() => setEditing(!editing)}
+            className="rounded-lg bg-white/5 px-3 py-1.5 text-xs font-medium text-sky-300"
+          >
+            {editing ? 'Cancel' : 'Edit'}
+          </button>
+        </div>
 
-        <button 
-          onClick={handleDarkModeToggle}
-          className="w-full flex items-center justify-between p-4 bg-slate-800/60 rounded-xl hover:bg-slate-800 transition"
-        >
-          <div className="flex items-center space-x-3">
-            <Moon className="w-5 h-5 text-purple-400" />
-            <span>Dark Mode</span>
+        <div className="relative flex items-center gap-4">
+          <div className="flex h-20 w-20 items-center justify-center rounded-3xl bg-gradient-to-br from-sky-500 to-cyan-500 text-2xl font-bold text-white shadow-xl shadow-sky-500/20">
+            {initials}
           </div>
-          <div className="flex items-center space-x-2 text-slate-400">
-            <span>{darkMode ? 'Active' : 'Inactive'}</span>
-            <ChevronRight className="w-4 h-4" />
+          <div className="flex-1">
+            {editing ? (
+              <input
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                className="w-full rounded-lg border border-slate-700 bg-slate-800/50 px-3 py-1.5 text-sm font-bold text-white focus:border-sky-500 focus:outline-none"
+              />
+            ) : (
+              <h2 className="font-display text-lg font-bold text-white">{profile?.full_name || 'User'}</h2>
+            )}
+            <div className="mt-1 flex items-center gap-2">
+              <Mail size={12} className="text-slate-500" />
+              <p className="truncate text-xs text-slate-400">{user?.email}</p>
+            </div>
+            <div className="mt-1.5 flex items-center gap-2">
+              <Briefcase size={12} className="text-sky-400" />
+              <span className="rounded-full bg-sky-500/10 px-2.5 py-0.5 text-[10px] font-medium capitalize text-sky-300">
+                {profile?.role || 'Student'}
+              </span>
+            </div>
           </div>
-        </button>
+        </div>
 
-        <button 
-          onClick={handleLanguageChange}
-          className="w-full flex items-center justify-between p-4 bg-slate-800/60 rounded-xl hover:bg-slate-800 transition"
-        >
-          <div className="flex items-center space-x-3">
-            <Globe className="w-5 h-5 text-green-400" />
-            <span>Language</span>
+        {editing && (
+          <div className="relative mt-4 animate-fade-in">
+            <textarea
+              value={bio}
+              onChange={(e) => setBio(e.target.value)}
+              placeholder="Tell us about yourself..."
+              rows={2}
+              className="w-full resize-none rounded-xl border border-slate-700 bg-slate-800/50 px-3 py-2.5 text-sm text-white placeholder:text-slate-500 focus:border-sky-500 focus:outline-none"
+            />
+            <button
+              onClick={saveProfile}
+              className="mt-2 w-full rounded-xl bg-gradient-to-r from-sky-500 to-cyan-500 py-2.5 text-sm font-semibold text-white"
+            >
+              Save Changes
+            </button>
           </div>
-          <div className="flex items-center space-x-2 text-slate-400">
-            <span>{language}</span>
-            <ChevronRight className="w-4 h-4" />
-          </div>
-        </button>
+        )}
 
-        <button 
-          onClick={handleHelpSupport}
-          className="w-full flex items-center justify-between p-4 bg-slate-800/60 rounded-xl hover:bg-slate-800 transition"
-        >
-          <div className="flex items-center space-x-3">
-            <HelpCircle className="w-5 h-5 text-amber-400" />
-            <span>Help & Support</span>
+        {profile?.bio && !editing && (
+          <p className="relative mt-3 text-xs leading-relaxed text-slate-400">{profile.bio}</p>
+        )}
+      </div>
+
+      {/* Stats */}
+      <div className="px-5 pt-5">
+        <div className="grid grid-cols-3 gap-3">
+          <div className="rounded-2xl border border-white/5 bg-slate-900/60 p-4 text-center">
+            <div className="mx-auto mb-1.5 flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-500/10">
+              <Award size={18} className="text-emerald-400" />
+            </div>
+            <p className="font-display text-xl font-bold text-white">{completedCount}</p>
+            <p className="text-[10px] text-slate-400">Completed</p>
           </div>
-          <ChevronRight className="w-4 h-4 text-slate-400" />
+          <div className="rounded-2xl border border-white/5 bg-slate-900/60 p-4 text-center">
+            <div className="mx-auto mb-1.5 flex h-9 w-9 items-center justify-center rounded-xl bg-sky-500/10">
+              <Target size={18} className="text-sky-400" />
+            </div>
+            <p className="font-display text-xl font-bold text-white">{inProgressCount}</p>
+            <p className="text-[10px] text-slate-400">In Progress</p>
+          </div>
+          <div className="rounded-2xl border border-white/5 bg-slate-900/60 p-4 text-center">
+            <div className="mx-auto mb-1.5 flex h-9 w-9 items-center justify-center rounded-xl bg-orange-500/10">
+              <Bookmark size={18} className="text-orange-400" />
+            </div>
+            <p className="font-display text-xl font-bold text-white">{bookmarks.length}</p>
+            <p className="text-[10px] text-slate-400">Bookmarks</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Overall progress bar */}
+      <div className="px-5 pt-4">
+        <div className="rounded-2xl border border-white/5 bg-slate-900/60 p-4">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <TrendingUp size={16} className="text-sky-400" />
+              <span className="text-xs font-medium text-slate-300">Overall Progress</span>
+            </div>
+            <span className="text-xs font-bold text-sky-400">{overallProgress}%</span>
+          </div>
+          <div className="h-2 w-full overflow-hidden rounded-full bg-slate-800">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-sky-500 to-cyan-400 transition-all duration-1000"
+              style={{ width: `${overallProgress}%` }}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Tab switcher */}
+      <div className="px-5 pt-6">
+        <div className="flex gap-2 rounded-2xl bg-slate-800/50 p-1.5">
+          <button
+            onClick={() => setActiveTab('progress')}
+            className={`flex-1 rounded-xl py-2.5 text-xs font-semibold transition-all ${
+              activeTab === 'progress' ? 'bg-gradient-to-r from-sky-500 to-cyan-500 text-white' : 'text-slate-400'
+            }`}
+          >
+            My Progress
+          </button>
+          <button
+            onClick={() => setActiveTab('bookmarks')}
+            className={`flex-1 rounded-xl py-2.5 text-xs font-semibold transition-all ${
+              activeTab === 'bookmarks' ? 'bg-gradient-to-r from-sky-500 to-cyan-500 text-white' : 'text-slate-400'
+            }`}
+          >
+            Bookmarks
+          </button>
+        </div>
+      </div>
+
+      {/* Tab content */}
+      <div className="px-5 pt-4">
+        {activeTab === 'progress' ? (
+          <div className="space-y-3">
+            {progressItems.length === 0 && (
+              <div className="flex flex-col items-center py-10 text-center">
+                <Target size={40} className="mb-3 text-slate-700" />
+                <p className="text-sm text-slate-500">No modules started yet</p>
+                <button
+                  onClick={() => onNavigate('training')}
+                  className="mt-3 rounded-lg bg-sky-500/20 px-4 py-2 text-xs font-medium text-sky-300"
+                >
+                  Browse Training Modules
+                </button>
+              </div>
+            )}
+            {progressItems.map((item, i) => {
+              const CatIcon = categoryIcons[item.category] || BookOpen;
+              const catColor = categoryColors[item.category] || 'bg-slate-700 text-slate-300';
+              return (
+                <div
+                  key={item.id}
+                  className="rounded-2xl border border-white/5 bg-slate-900/60 p-4 animate-fade-in-up"
+                  style={{ animationDelay: `${i * 0.06}s` }}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl ${catColor}`}>
+                      <CatIcon size={18} />
+                    </div>
+                    <div className="flex-1 overflow-hidden">
+                      <p className="truncate text-sm font-medium text-white">{item.module_name}</p>
+                      <p className="text-[11px] capitalize text-slate-500">{item.category.replace(/-/g, ' ')}</p>
+                    </div>
+                    <span className={`text-xs font-bold ${item.progress === 100 ? 'text-emerald-400' : 'text-sky-400'}`}>
+                      {item.progress}%
+                    </span>
+                  </div>
+                  <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-slate-700/50">
+                    <div
+                      className={`h-full rounded-full ${
+                        item.progress === 100
+                          ? 'bg-gradient-to-r from-emerald-500 to-teal-400'
+                          : 'bg-gradient-to-r from-sky-500 to-cyan-400'
+                      }`}
+                      style={{ width: `${item.progress}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {bookmarks.length === 0 && (
+              <div className="flex flex-col items-center py-10 text-center">
+                <Bookmark size={40} className="mb-3 text-slate-700" />
+                <p className="text-sm text-slate-500">No bookmarks yet</p>
+                <p className="mt-1 text-xs text-slate-600">Bookmark legal sections and training content to find them here</p>
+              </div>
+            )}
+            {bookmarks.map((bm, i) => {
+              const catColor = categoryColors[bm.category] || 'bg-slate-700 text-slate-300';
+              return (
+                <div
+                  key={bm.id}
+                  className="group rounded-2xl border border-white/5 bg-slate-900/60 p-4 animate-fade-in-up"
+                  style={{ animationDelay: `${i * 0.06}s` }}
+                >
+                  <div className="flex items-start gap-3">
+                    <div className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg ${catColor}`}>
+                      <Bookmark size={16} />
+                    </div>
+                    <div className="flex-1 overflow-hidden">
+                      <p className="text-sm font-medium text-white">{bm.title}</p>
+                      {bm.reference && <p className="mt-0.5 text-[11px] text-slate-400">{bm.reference}</p>}
+                      {bm.note && <p className="mt-1.5 text-xs text-slate-500">{bm.note}</p>}
+                      <span className="mt-2 inline-block rounded-full bg-slate-800 px-2 py-0.5 text-[9px] capitalize text-slate-400">
+                        {bm.category}
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => deleteBookmark(bm.id)}
+                      className="opacity-0 transition-opacity group-hover:opacity-100"
+                    >
+                      <Trash2 size={15} className="text-rose-400" />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Settings */}
+      <div className="px-5 pt-6">
+        <h3 className="mb-3 text-sm font-semibold text-slate-300">Settings</h3>
+        <div className="space-y-2">
+          {settingsItems.map((item, i) => {
+            const Icon = item.icon;
+            return (
+              <button
+                key={i}
+                type="button"
+                onClick={item.onClick}
+                className="flex w-full items-center gap-3 rounded-2xl border border-white/5 bg-slate-900/60 p-4 text-left transition-all hover:border-white/10 active:scale-[0.99]"
+              >
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-800">
+                  <Icon size={16} className="text-slate-400" />
+                </div>
+                <span className="flex-1 text-sm text-slate-300">{item.label}</span>
+                {item.value && <span className="text-xs text-slate-500">{item.value}</span>}
+                {item.toggle !== undefined ? (
+                  <span className={`relative h-5 w-9 rounded-full transition-colors ${item.toggle ? 'bg-sky-500' : 'bg-slate-700'}`}>
+                    <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all ${item.toggle ? 'left-[18px]' : 'left-0.5'}`} />
+                  </span>
+                ) : (
+                  <ChevronRight size={16} className="text-slate-600" />
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Sign out */}
+      <div className="px-5 pt-5">
+        <button
+          onClick={signOut}
+          className="flex w-full items-center justify-center gap-2 rounded-2xl border border-rose-500/20 bg-rose-500/5 py-3.5 text-sm font-semibold text-rose-400 transition-all hover:bg-rose-500/10"
+        >
+          <LogOut size={18} />
+          Sign Out
         </button>
       </div>
 
-      <button 
-        onClick={onSignOut}
-        className="w-full flex items-center justify-center space-x-2 p-4 bg-red-500/10 border border-red-500/20 text-red-400 rounded-xl hover:bg-red-500/20 transition mt-6"
-      >
-        <LogOut className="w-5 h-5" />
-        <span className="font-medium">Sign Out</span>
-      </button>
+      <div className="px-5 pt-4 text-center">
+        <p className="text-[10px] text-slate-600">DroneLex & Pilot AI v1.0.0</p>
+      </div>
 
-      <p className="text-center text-xs text-slate-500 pt-4">DroneLex & Pilot AI v1.0.0</p>
+      {notice && (
+        <div className="fixed bottom-24 left-1/2 z-50 -translate-x-1/2 rounded-full bg-slate-800 px-4 py-2 text-xs text-white shadow-lg">
+          {notice}
+        </div>
+      )}
+
+      {helpOpen && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60" onClick={() => setHelpOpen(false)}>
+          <div
+            className="max-h-[80%] w-full max-w-md overflow-y-auto rounded-t-3xl border border-white/10 bg-slate-900 p-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="font-display text-base font-bold text-white">Help & Support</h3>
+              <button type="button" onClick={() => setHelpOpen(false)} aria-label="Close">
+                <X size={20} className="text-slate-400" />
+              </button>
+            </div>
+            <div className="space-y-3">
+              {FAQ.map((f) => (
+                <div key={f.q} className="rounded-xl bg-slate-800/60 p-3">
+                  <p className="text-sm font-medium text-white">{f.q}</p>
+                  <p className="mt-1 text-xs leading-relaxed text-slate-400">{f.a}</p>
+                </div>
+              ))}
+            </div>
+            <a
+              href={`mailto:${SUPPORT_EMAIL}?subject=DroneLex%20Support`}
+              className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-sky-500 to-cyan-500 py-3 text-sm font-semibold text-white"
+            >
+              <Mail size={16} /> Email Support
+            </a>
+          </div>
+        </div>
+      )}
     </div>
   );
-};
+}
